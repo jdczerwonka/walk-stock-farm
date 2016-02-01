@@ -47,13 +47,8 @@ priceCutoff = [0.29721160, 0.19111814, 0.11239397,
 ##plt.show()
 
 gm = PigGrowthModel(awgModel, awfcModel, w2fModel, 12, awgAdjust, fccumAdjust, priceCutoff, wtCutoff)
-bm = BarnModel(w2fModel, gm)
-print bm.feed_cost_total.integrate(0,26)
 
-
-##x = numpy.arange(0,27,.1)
-##plt.plot(x, bm.death.model(x))
-##plt.plot(x, bm.death_shift.model(x))
-##plt.plot(x, bm.alive.model(x))
-##plt.plot(x, bm.alive_shift.model(x))
-##plt.show()
+x = numpy.arange(0, 40.1, .1)
+plt.plot(x, gm.fc_cum.model(x))
+# plt.plot(x, gm.awg.model(x))
+plt.show()

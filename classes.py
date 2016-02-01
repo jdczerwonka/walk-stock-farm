@@ -154,35 +154,192 @@ class SalesModel:
     def wt_avg(self, ColumnStr):
         return ( self.carcass_df[ColumnStr].sum() * self.carcass_df["num"].sum() ) / self.carcass_df["num"].sum()
 
+# class PigGrowthModel():
+#     def __init__(self, awgModel = [0], awfcModel = [0], deathModel = [0], awgStart = 0,
+#                  awgAdjust = None, fccumAdjust = None, PriceCutoff = [0], WtCutoff = WT_CUTOFF_DEFAULT, WeekCutoff = None):
+#         self.awg = PolyModel(awgModel, awgStart)
+#         if awgAdjust is not None:
+#             self.awg.adjust_model(awgAdjust[0], awgAdjust[1], awgAdjust[2])
+            
+#         self.awfc = PolyModel(awfcModel)
+#         self.awfc.adjust_model(fccumAdjust[0], fccumAdjust[1], fccumAdjust[2], 1, fccumAdjust[2] - fccumAdjust[1])
+#         self.set_awfi
+
+#         if WeekCutoff is None:
+#             WeekCutoff = []
+#             for wt in WtCutoff:
+#                 WeekCutoff.append(self.awg.calc_week(wt))
+
+#             WeekCutoff.append(26)
+
+#         self.feed_cost = HeavisideModel(PriceCutoff, WeekCutoff)
+#         self.feed_cost_total = Model(lambda x: self.feed_cost.model(x) * self.awfi.model(x))
+
+#     @property
+#     def set_awfi(self):
+#         p = self.awg.model * self.awfc.model
+#         self.awfi = PolyModel( p.coef )
+
+# class BarnModel():
+#     def __init__(self, DeathModel, PigModel, BarnSize = 2500, DeathLossPer = 3.25):
+#         self.death = PolyModel(DeathModel)
+#         self.barn_size = BarnSize
+#         self.death_loss = DeathLossPer
+
+#         self.adjust_death
+
+#         self.pig = PigModel
+
+#         self.awfi = Model(lambda x: self.pig.awfi.model(x) * self.alive_shift.model(x))
+#         self.feed_cost_total = Model(lambda x: self.pig.feed_cost_total.model(x) * self.alive_shift.model(x))
+
+#     @property
+#     def adjust_death(self):
+#         adjust = self.death.integrate(0, 26)
+#         self.death.model.coef = self.death.model.coef * (self.death_loss / 100 * self.barn_size / adjust)
+#         self.calc_alive
+#         self.shift_death
+
+#     @property
+#     def calc_alive(self):
+#         p = self.barn_size - self.death.model.integ()
+#         self.alive = PolyModel( p.coef )
+
+#     @property
+#     def shift_death(self):
+#         roots = self.death.model.roots()
+#         self.death_shift = Model(lambda x: self.death.model(x + roots[0]))
+#         self.alive_shift = Model(lambda x: self.alive.model(x + roots[0]))
+
+# ##    def set_awg(self):
+# ##        p = self.death.model * self.pig.awg.model
+# ##        self.awg = PolyModel( p.coef ) 
+
+# class Model():
+#     def __init__(self, f, ModelStart = 0):
+#         self.model = f
+#         self.model_start = ModelStart
+
+#     def integrate(self, lb = 0, ub = 26, c = None):
+#         if c is None:
+#             c = self.model_start
+            
+#         return quad(self.model, lb, ub, limit=1000)[0] + c
+
+#     def calc_week(self, zero, lb = 0):
+#         return newton(lambda x: self.integrate(lb, x, 0) + self.model_start - zero, 26)
+        
+# class HeavisideModel():
+#     def __init__(self, PriceCutoff, WeekCutoff):
+#         self.cutoff_price = PriceCutoff
+#         self.cutoff_week = WeekCutoff
+#         self.model = lambda x: self.set_model(x)
+
+#     def heaviside(self, x):
+#         return 0.5 + 0.5 * numpy.tanh(5000 * x)
+
+#     def set_model(self, x):
+#         func = self.cutoff_price[0] * self.heaviside(x - self.cutoff_week[0])
+#         for i in range(1, len( self.cutoff_week ) - 1, 1):
+#             func = func + (self.cutoff_price[i] - self.cutoff_price[i - 1]) * self.heaviside(x - self.cutoff_week[i])  
+
+#         return func 
+        
+# ##class PolyDivModel():
+# ##    def __init__(self, awfiModel, awgModel):
+# ##        self.model = lambda lb, ub: quad(awfiModel.model, lb, ub)[0] / quad(awgModel.model, lb, ub)[0]
+# ##
+# class PolyModel():
+#     def __init__(self, Model = [0], ModelStart = 0):
+#         self.model_start = ModelStart
+#         self.model = polynomial(Model)
+
+#     def integrate(self, lb = 0, ub = 26, c = None, x = None, coef = 0):
+#         if c is None:
+#             c = self.model_start
+
+#         if x is not None:
+#             self.model.coef[coef] = x
+            
+#         return quad(self.model, lb, ub)[0] + c
+
+#     def calc_week(self, zero, lb = 0):
+#         return newton(lambda x: self.integrate(lb, x, 0) + self.model_start - zero, 26)
+
+#     def adjust_model(self, zero, lb, ub, coef = 0, div = 1):
+#         self.model.coef[coef] = round(newton(lambda x: ( self.integrate(lb, ub, 0, x, coef) / div ) + self.model_start - zero, 0, maxiter=10000), 8)
+
+
 class PigGrowthModel():
-    def __init__(self, awgModel = [0], awfcModel = [0], deathModel = [0], awgStart = 0,
-                 awgAdjust = None, fccumAdjust = None, PriceCutoff = [0], WtCutoff = WT_CUTOFF_DEFAULT, WeekCutoff = None):
-        self.awg = PolyModel(awgModel, awgStart)
+    def __init__(self, awgModel = [0], awfcModel = [0], deathModel = [0], StartWeight = 0,
+                 awgAdjust = None, awfcAdjust = None, PriceCutoff = [0], WtCutoff = WT_CUTOFF_DEFAULT, WeekCutoff = None):
+        
+        self.start_weight = StartWeight
+
+        self.awg = PolyModel( polynomial(awgModel) )
         if awgAdjust is not None:
             self.awg.adjust_model(awgAdjust[0], awgAdjust[1], awgAdjust[2])
-            
-        self.awfc = PolyModel(awfcModel)
-        self.awfc.adjust_model(fccumAdjust[0], fccumAdjust[1], fccumAdjust[2], 1, fccumAdjust[2] - fccumAdjust[1])
+
+        self.awfc = PolyModel( polynomial(awfcModel) )
+        if awfcAdjust is not None:
+            self.awfc.adjust_model(awfcAdjust[0], awfcAdjust[1], awfcAdjust[2], 1, awfcAdjust[2] - awfcAdjust[1])
+
+        self.set_gain
+        self.set_fc_cum
         self.set_awfi
+        self.set_awfi_cum
+
+        self.cutoff_price = PriceCutoff
+        self.cutoff_wt = WtCutoff
 
         if WeekCutoff is None:
-            WeekCutoff = []
-            for wt in WtCutoff:
-                WeekCutoff.append(self.awg.calc_week(wt))
+            self.calc_week_cutoff
 
-            WeekCutoff.append(26)
-
-        self.feed_cost = HeavisideModel(PriceCutoff, WeekCutoff)
+        self.feed_cost = Model(lambda x: heaviside_combined(x))
         self.feed_cost_total = Model(lambda x: self.feed_cost.model(x) * self.awfi.model(x))
+
+    @property
+    def set_gain(self):
+        p = self.awg.model.integ()
+        self.gain = Model( polynomial(p.coef) )
+
+    @property
+    def set_fc_cum(self):
+        p = self.awfc.model.integ()
+        m = polynomial(p.coef)
+        self.fc_cum = Model(lambda x: m(x) / x )
 
     @property
     def set_awfi(self):
         p = self.awg.model * self.awfc.model
-        self.awfi = PolyModel( p.coef )
+        self.awfi = Model( polynomial(p.coef) )
+
+    @property
+    def set_awfi_cum(self):
+        p = self.awfi.model.integ()
+        self.awfi_cum = Model( polynomial(self.awfi) )    
+
+    @property
+    def calc_week_cutoff(self):
+        self.cutoff_week = []
+        for wt in self.cutoff_wt:
+            self.cutoff_week.append(self.awg.calc_week(wt))
+
+        self.cutoff_week.append(26)
+
+    def heaviside(self, x):
+        return 0.5 + 0.5 * numpy.tanh(5000 * x)
+
+    def heaviside_combined(self, x):
+        func = self.cutoff_price[0] * self.heaviside(x - self.cutoff_week[0])
+        for i in range(1, len( self.cutoff_week ) - 1, 1):
+            func = func + (self.cutoff_price[i] - self.cutoff_price[i - 1]) * self.heaviside(x - self.cutoff_week[i])  
+
+        return func 
 
 class BarnModel():
     def __init__(self, DeathModel, PigModel, BarnSize = 2500, DeathLossPer = 3.25):
-        self.death = PolyModel(DeathModel)
+        self.death = Model( Polynomial(DeathModel) )
         self.barn_size = BarnSize
         self.death_loss = DeathLossPer
 
@@ -211,60 +368,28 @@ class BarnModel():
         self.death_shift = Model(lambda x: self.death.model(x + roots[0]))
         self.alive_shift = Model(lambda x: self.alive.model(x + roots[0]))
 
-##    def set_awg(self):
-##        p = self.death.model * self.pig.awg.model
-##        self.awg = PolyModel( p.coef ) 
-
 class Model():
-    def __init__(self, f, ModelStart = 0):
-        self.model = f
-        self.model_start = ModelStart
+    def __init__(self, func):
+        self.model = func
 
-    def integrate(self, lb = 0, ub = 26, c = None):
-        if c is None:
-            c = self.model_start
-            
-        return quad(self.model, lb, ub, limit=1000)[0] + c
+    def integrate(self, lb = 0, ub = 26, div = 1):            
+        return quad(self.model, lb, ub, limit=1000)[0] / div
 
     def calc_week(self, zero, lb = 0):
-        return newton(lambda x: self.integrate(lb, x, 0) + self.model_start - zero, 26)
+        return newton(lambda x: self.integrate(lb, x) - zero, 26)
         
-class HeavisideModel():
-    def __init__(self, PriceCutoff, WeekCutoff):
-        self.cutoff_price = PriceCutoff
-        self.cutoff_week = WeekCutoff
-        self.model = lambda x: self.set_model(x)
-
-    def heaviside(self, x):
-        return 0.5 + 0.5 * numpy.tanh(5000 * x)
-
-    def set_model(self, x):
-        func = self.cutoff_price[0] * self.heaviside(x - self.cutoff_week[0])
-        for i in range(1, len( self.cutoff_week ) - 1, 1):
-            func = func + (self.cutoff_price[i] - self.cutoff_price[i - 1]) * self.heaviside(x - self.cutoff_week[i])  
-
-        return func 
-        
-##class PolyDivModel():
-##    def __init__(self, awfiModel, awgModel):
-##        self.model = lambda lb, ub: quad(awfiModel.model, lb, ub)[0] / quad(awgModel.model, lb, ub)[0]
-##
 class PolyModel():
-    def __init__(self, Model = [0], ModelStart = 0):
-        self.model_start = ModelStart
-        self.model = polynomial(Model)
+    def __init__(self, func):
+        self.model = func
 
-    def integrate(self, lb = 0, ub = 26, c = None, x = None, coef = 0):
-        if c is None:
-            c = self.model_start
-
+    def integrate(self, lb = 0, ub = 26, div = 1, x = None, coef = 0):
         if x is not None:
             self.model.coef[coef] = x
             
-        return quad(self.model, lb, ub)[0] + c
+        return quad(self.model, lb, ub)[0] / div
 
     def calc_week(self, zero, lb = 0):
-        return newton(lambda x: self.integrate(lb, x, 0) + self.model_start - zero, 26)
+        return newton(lambda x: self.integrate(lb, x) - zero, 26)
 
     def adjust_model(self, zero, lb, ub, coef = 0, div = 1):
-        self.model.coef[coef] = round(newton(lambda x: ( self.integrate(lb, ub, 0, x, coef) / div ) + self.model_start - zero, 0, maxiter=10000), 8)
+        self.model.coef[coef] = round(newton(lambda x: ( self.integrate(lb, ub, div, x, coef) ) - zero, 0, maxiter=10000), 8)
