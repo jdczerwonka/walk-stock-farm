@@ -8,7 +8,8 @@ from scipy.integrate import quad
 
 w2fModel = [-203.950303, 288.798017, -81.388061, 10.101958, -0.623565, 0.018835, -0.000222]
 finModel = [-130.739421, 210.431209, -65.244076, 9.294793, -0.678313, 0.024900, -0.000365]
-awgModel = [-0.87031545, 2.16250341, -0.09743488, 0.00122924]
+awgModel = [0.43503557, 2.16250341, -0.09743488, 0.00122924]
+abilene = -0.87031545
 awfcModel = [1, 0.10728206]
 awgAdjust = [273, 0, 26]
 fccumAdjust = [2.57, 0, 26]
@@ -48,7 +49,9 @@ priceCutoff = [0.29721160, 0.19111814, 0.11239397,
 
 gm = PigGrowthModel(awgModel, awfcModel, w2fModel, 12, awgAdjust, fccumAdjust, priceCutoff, wtCutoff)
 
-x = numpy.arange(0, 40.1, .1)
-plt.plot(x, gm.fc_cum.model(x))
-# plt.plot(x, gm.awg.model(x))
-plt.show()
+# x = numpy.arange(0, 40.1, .1)
+# plt.plot(x, gm.awfc.model(x))
+# plt.plot(x, gm.awfc_shift.model(x))
+# plt.show()
+
+print gm.feed_cost_total.integrate(0,26)
