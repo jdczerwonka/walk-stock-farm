@@ -13,12 +13,9 @@ from scipy.optimize import newton
 polynomial = numpy.polynomial.polynomial.Polynomial
 
 class SalesModel:
-    def __init__(self, MarketSize = 2400, CarcassAvg = 220, CarcassStdDev = 18,
-                 LeanAvg = 54, LeanStdDev = 2.1, YieldAvg = 76,
-                 BasePrice = 80, FeedPrice = 0.10, BaseLiveWt = 250, DeathLoss = 3.25,
+    def __init__(self, CarcassAvg = 220, CarcassStdDev = 18,
+                 LeanAvg = 54, LeanStdDev = 2.1, YieldAvg = 76, BasePrice = 80,
                  Packer = "Cargill", LeanDist = "norm", CarcassDist = "logistic"):
-        
-        self.market_size = MarketSize
         
         self.carcass_avg = CarcassAvg
         self.carcass_std_dev = CarcassStdDev
@@ -26,133 +23,58 @@ class SalesModel:
         self.lean_avg = LeanAvg
         self.lean_std_dev = LeanStdDev
         self.yield_avg = YieldAvg
+
+        self.live_avg = self.carcass_avg / (self.yield_avg / 100)
         
         self.base_price = BasePrice
-        self.feed_price = FeedPrice
-        self.base_live_wt = BaseLiveWt
-        self.death_loss = DeathLoss
 
         self.packer = Packer
         self.lean_dist = LeanDist
         self.carcass_dist = CarcassDist
 
-        self.initialize_packer()
-        self.initialize_lean_dist()
-        
-        self.growth_model = GrowthModel()
+        self.calc_matrix_factor
+        self.calc_revenue
 
     @property
     def carcass_s(self):
         return math.sqrt(3 * self.carcass_std_dev ** 2 / math.pi ** 2)
 
-    @property
-    def adjust_death_model(self):
-        adjust = self.growth_model.death.integrate(0, 26)
-        self.growth_model.death.model.coef = self.growth_model.death.model.coef * (self.death_loss / 100 * self.market_size / adjust)
+    @property 
+    def calc_matrix_factor(self):
+        if self.lean_dist == "norm":
+            prob_dist = norm
+            std_dev = self.lean_std_dev
 
-    def initialize_packer(self):
         if self.packer == "Cargill":
-            self.lean_arr_lb = -0.5
-            self.lean_arr_lb = numpy.append(self.lean_arr_lb, numpy.arange(40.5, 63.5))
-
-            self.lean_arr_ub = numpy.arange(40.5, 63.5)
-            self.lean_arr_ub = numpy.append(self.lean_arr_ub, 100.5)
-
-            self.packer_wt_arr = [0, 141, 148, 155, 163, 170, 177, 185, 192, 199, 207, 214, 222, 229, 236, 243, 245, 250, 257, 264, 999]
+            self.packer_wt_arr = [0.5, 140.5, 147.5, 154.5, 162.5, 169.5, 176.5, 184.5, 191.5, 198.5, 206.5, 213.5, 221.5, 228.5, 235.5, 242.5, 244.5, 249.5, 256.5, 263.5]
             self.packer_matrix_df = pandas.read_csv(CARGILL_WB, header=None)
 
-    def initialize_lean_dist(self):
-        if self.lean_dist == "norm":
-            self.prob_arr = numpy.round(norm.cdf(self.lean_arr_ub, self.lean_avg, self.lean_std_dev) - norm.cdf(self.lean_arr_lb, self.lean_avg, self.lean_std_dev), 4)
+            self.matrix_factor = []
+            for j in range(0, 20):
+                tot = 0
+                for i in range(0, 24):
+                    tot = tot + self.packer_matrix_df.iloc[i, j] * (prob_dist.cdf(39.5 + 1 + i, self.lean_avg, std_dev) - prob_dist.cdf(39.5 + i, self.lean_avg, std_dev))
 
-    def calculate_range(self, arr, factor):
-        data_table = pandas.DataFrame(columns=(factor, "rev_net", "rev_net_pig"))
-        
-        if factor == "live_avg":
-            for wt in arr:
-                self.carcass_avg = wt * ( self.yield_avg / 100 )
-                self.calculate_model()
-                data_table.loc[len(data_table) + 1] = [wt, self.rev_net, self.rev_net_pig]
-        elif factor == "carcass_std_dev":
-            for std_dev in arr:
-                self.carcass_std_dev = std_dev
-                self.calculate_model
-                data_table.loc[len(data_table) + 1] = [wt, self.rev_net, self.rev_net_pig]
-                
-        return data_table
+                self.matrix_factor.append( tot + self.packer_matrix_df.iloc[0, j] * (prob_dist.cdf(39.5, self.lean_avg, std_dev) - prob_dist.cdf(-numpy.inf, self.lean_avg, std_dev)) +
+                    self.packer_matrix_df.iloc[0, j] * (prob_dist.cdf(numpy.inf, self.lean_avg, std_dev) - prob_dist.cdf(63.5, self.lean_avg, std_dev)) )
 
-    def calculate_model(self):
-        self.calculate_rev()
-        self.calculate_feed()
-        self.calculate_death()
+    @property 
+    def calc_revenue(self):        
+        if self.carcass_dist == "norm":
+            prob_dist = norm
+            std_dev = self.carcass_std_dev
+        elif self.carcass_dist == "logistic":
+            prob_dist = logistic
+            std_dev = self.carcass_s
 
-        self.rev_net = self.sum("rev_total") - self.sum("excess_feed_total_cost") - self.death_cost
-        self.rev_net_pig = self.rev_net / self.market_size_adj
+        self.base_price_adj = 0
+        for i in range(0, len(self.matrix_factor) - 1):
+            self.base_price_adj = self.base_price_adj + ( self.matrix_factor[i] + self.base_price ) * ( (prob_dist.cdf(self.packer_wt_arr[i + 1], self.carcass_avg, std_dev) - prob_dist.cdf(self.packer_wt_arr[i], self.carcass_avg, std_dev)) / 100 )
 
-    def calculate_rev(self):        
-        CarcassL = numpy.arange(0.5, 399.5)
-        CarcassU = numpy.arange(1.5, 400.5)
-        
-        if self.carcass_dist == "logistic":
-            Num = numpy.round((logistic.cdf(CarcassU, self.carcass_avg, self.carcass_s) -
-                logistic.cdf(CarcassL, self.carcass_avg, self.carcass_s)) * self.market_size, 0)
-        elif self.carcass_dist == "norm":
-            Num = numpy.round((norm.cdf(CarcassU, self.carcass_avg, self.carcass_std_dev) -
-                norm.cdf(CarcassL, self.carcass_avg, self.carcass_std_dev)) * self.market_size, 0)
-            
-        CarcassDF = pandas.DataFrame({  "carcass_avg" : numpy.arange(1, 400),
-                                        "num" : Num
-                                    })
-                              
-        CarcassDF = CarcassDF[CarcassDF["num"] > 0]
+        self.base_price_adj = ( self.base_price_adj + ( self.matrix_factor[0] + self.base_price ) * ( (prob_dist.cdf(self.packer_wt_arr[0], self.carcass_avg, std_dev) - prob_dist.cdf(-numpy.inf, self.carcass_avg, std_dev)) / 100 ) +
+            ( self.matrix_factor[len(self.matrix_factor) - 1] + self.base_price ) * ( (prob_dist.cdf(numpy.inf, self.carcass_avg, std_dev) - prob_dist.cdf(self.packer_wt_arr[len(self.matrix_factor) - 1], self.carcass_avg, std_dev)) / 100 ) )
 
-        CarcassDF["matrix_factor"] = self.calculate_matrix_factor(CarcassDF["carcass_avg"])
-        CarcassDF["rev_head"] = (CarcassDF["carcass_avg"] / 100) * (CarcassDF["matrix_factor"] + self.base_price)
-        CarcassDF["rev_total"] = CarcassDF["rev_head"] * CarcassDF["num"]
-
-        self.carcass_df = CarcassDF
-
-    def calculate_matrix_factor(self, CarcassWt):
-        MatrixFactor = [0]
-        for index, val in CarcassWt.iteritems():
-            x = 0
-            while self.packer_wt_arr[x] < val:
-                x = x + 1
-
-            MatrixFactor = numpy.append(MatrixFactor, numpy.sum(self.packer_matrix_df[x - 1] * self.prob_arr))  
-
-        MatrixFactor = numpy.delete(MatrixFactor, 0)
-        
-        return MatrixFactor
-
-    def calculate_feed(self):
-        self.carcass_df["live_avg"] = self.carcass_df["carcass_avg"] / ( self.yield_avg / 100 )
-        self.carcass_df["excess_gain"] = self.carcass_df["live_avg"] - self.base_live_wt
-        self.carcass_df["excess_feed"] = self.carcass_df.apply(self.calculate_excess_feed, axis=1)
-        self.carcass_df["excess_feed_total"] = self.carcass_df["excess_feed"] * self.carcass_df["num"]
-        self.carcass_df["excess_feed_total_cost"] = self.carcass_df["excess_feed_total"] * self.feed_price
-        
-    def calculate_excess_feed(self, x):
-        return self.growth_model.awfi.integrate(
-                self.growth_model.awg.calc_week( self.base_live_wt ) ,
-                self.growth_model.awg.calc_week( x["live_avg"] ) )
-
-    def calculate_death(self):
-        self.death_size = self.growth_model.death.integrate(
-                self.growth_model.awg.calc_week( self.base_live_wt ) ,
-                self.growth_model.awg.calc_week( self.carcass_avg / ( self.yield_avg / 100 ) ) )
-
-        self.market_size_adj = self.market_size - self.death_size
-        self.death_cost = self.death_size * self.avg("rev_head")
-
-    def sum(self, ColumnStr):
-        return self.carcass_df[ColumnStr].sum()
-
-    def avg(self, ColumnStr):
-        return self.carcass_df[ColumnStr].mean()
-
-    def wt_avg(self, ColumnStr):
-        return ( self.carcass_df[ColumnStr].sum() * self.carcass_df["num"].sum() ) / self.carcass_df["num"].sum()
+        self.revenue_avg = self.base_price_adj * self.carcass_avg
 
 class PigGrowthModel():
     def __init__(self, awgModel = [0], awfcModel = [0],
@@ -251,7 +173,7 @@ class PigGrowthModel():
         return func 
 
 class BarnModel():
-    def __init__(self, DeathModel, PigModel, StartWeight = 12, BarnSize = 2500, DeathLossPer = 3.25):
+    def __init__(self, DeathModel, PigModel, SalesModel, StartWeight = 12, BarnSize = 2500, DeathLossPer = 3.25):
         
         self.death = Model( polynomial(DeathModel) )
         self.start_weight = StartWeight
@@ -261,6 +183,7 @@ class BarnModel():
         self.adjust_death
 
         self.pig = PigModel
+        self.sales = SalesModel
 
         self.set_awg
         self.set_g_total
@@ -274,6 +197,13 @@ class BarnModel():
         self.set_fc_cum
 
         self.aw_feed_cost = Model(lambda x: self.pig.aw_feed_cost.model(x) * self.alive.model(x))
+
+    @property 
+    def calc_sales(self):
+        wk = self.pig.awg.calc_week(self.sales.live_avg - self.start_weight)
+        self.revenue_total = self.sales.revenue_avg * self.alive.model(wk)
+        self.feed_total = self.aw_feed_cost.integrate(0, wk)
+        self.revenue_net = self.revenue_total - self.feed_total
 
     def calc_feed_cost_diff(self, lb, ub, data_type = "wk"):
         if data_type == "wt":
@@ -305,9 +235,7 @@ class BarnModel():
 
     @property 
     def set_fc_cum(self):
-        p = self.awfc.model.integ()
-        m = polynomial(p.coef)
-        self.fc_cum = Model( lambda x: m(x) / (x * self.barn_size) )
+        self.fc_cum = Model(lambda x: self.fi_cum.model(x) / self.g_cum.model(x))
 
     @property 
     def set_awfi(self):
