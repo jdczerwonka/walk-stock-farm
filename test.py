@@ -1,4 +1,4 @@
-CARGILL_WB = "C:\Users\Jonathan.WSF\Desktop\Market Sales Model\Cargill Lean Value Matrix.csv"
+CARGILL_WB = "C:\Users\Jonathan.WSF\Documents\GitHub\walk-stock-farm\Cargill Lean Value Matrix.csv"
 
 from classes import SalesModel
 from classes import PigGrowthModel
@@ -25,9 +25,9 @@ awfcModel = [1.1, 0.10728206]
 awgAdjust = [273, 0, 24.5]
 awfcAdjust = [2.63, 0, 24.5]
 
-wtCutoff = [12, 20, 30,
+wtCutoff = numpy.array([12, 20, 30,
             50, 80, 120, 160,
-            200, 225, 245, 265]
+            200, 225, 245, 265])
 
 priceCutoff = [0.29721160, 0.19111814, 0.11239397,
                0.09492490, 0.08964955, 0.08389767, 0.08180934,
@@ -37,8 +37,9 @@ priceCutoff2 = [0.31444049, 0.21165624, 0.13395160,
 				0.09024673, 0.09004769, 0.08920827, 0.08843443,
 				0.08818230, 0.08798901, 0.09244352, 0.09587957]
 
-
-
+# priceCutoffLB = numpy.array([0, 0.31444049, 0.21165624, 0.13395160,
+# 				0.09024673, 0.09004769, 0.08920827, 0.08843443,
+# 				0.08818230, 0.08798901, 0.09244352])
 
 ##x = []
 ##y = []
@@ -53,18 +54,29 @@ priceCutoff2 = [0.31444049, 0.21165624, 0.13395160,
 ##plt.plot(x,y)
 ##plt.show()
 
+# packer_matrix_df = pandas.read_csv(CARGILL_WB, header=None)
+# print packer_matrix_df[1]
 
-sm = SalesModel(CarcassAvg = 220, CarcassStdDev = 14, LeanAvg = 54.2,
-               LeanStdDev = 2.17, YieldAvg = 76.2, BasePrice = 53)
-gm = PigGrowthModel(awgModel, awfcModel, awgAdjust, awfcAdjust, priceCutoff, wtCutoff)
-bm = BarnModel(w2fModel, gm, sm, StartWeight = 12, BarnSize = 170)
-bm.calc_sales
+sm = SalesModel(CarcassAvg = 225, CarcassStdDev = 17.6, LeanAvg = 54.61,
+               LeanStdDev = 2.11, YieldAvg = 76.35, BasePrice = 51)
+gm = PigGrowthModel(awgModel, awfcModel, awgAdjust, awfcAdjust, priceCutoff2, wtCutoff)
+bm = BarnModel(w2fModel, gm, sm, StartWeight = 12, BarnSize = 170, ModelType = "cut")
 
-print bm.revenue_total, bm.feed_total, bm.revenue_net
 
 # x = numpy.arange(0, 26.1, .1)
-# plt.plot(x, bm.aw_feed_cost.model(x))
+# plt.plot(x, bm.feed_cost_cum.model(x))
 # plt.show()
+
+
+# x = numpy.arange(250, 295, 5)
+# plt.plot(x, bm.calc_rev_curve(x))
+# plt.show()
+
+
+
+x = numpy.arange(50, 111, 1)
+plt.plot(x, bm.calc_opt_price_curve(x))
+plt.show()
 
 # print bm.aw_feed_cost.integrate(0, 26)
 
